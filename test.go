@@ -7,12 +7,9 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
-
-	rPool "moviesite-filestore/cache/redis"
-
-	"github.com/garyburd/redigo/redis"
 )
 
 func multipartUpload(filename string, tgtURL string, chunkSize int) error {
@@ -80,66 +77,59 @@ func multipartUpload(filename string, tgtURL string, chunkSize int) error {
 }
 
 func main() {
-	c, _ := redis.Dial("tcp", "localhost:6379")
-	defer c.Close()
-	c.Do("SET", "name", "red")
-	fmt.Println("Done")
-	rConn := rPool.RedisPool().Get()
-	defer rConn.Close()
-	rConn.Do("SET", "word", "hello")
-	// rConn.Do("SET", "name", "blue")
-	// rConn.Do("SET", "mykey", "superWang", "EX", "5")
-	// rConn.Do("PING")
-	// username := "admin"
-	// token := "54eefa7dbd5bcf852c52fecd816f2a315c61832c"
-	// filehash := "dfa39cac093a7a9c94d25130671ec474d51a2995"
 
-	// resp, err := http.PostForm(
-	// 	"http://localhost:7000/file/mpupload",
-	// 	url.Values {
-	// 		"username": {username},
-	// 		"token": {token},
-	// 		"filehash": {filehash},
-	// 		"filesize": {"132489256"},
-	// 	}
-	// )
+	rConn.Do("SET", "name", "blue")
+	rConn.Do("SET", "mykey", "superWang", "EX", "5")
+	rConn.Do("PING")
+	username := "admin"
+	token := "54eefa7dbd5bcf852c52fecd816f2a315c61832c"
+	filehash := "dfa39cac093a7a9c94d25130671ec474d51a2995"
 
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// 	os.Exit(-1)
-	// }
+	resp, err := http.PostForm(
+		"http://localhost:7000/file/mpupload",
+		url.Values{
+			"username": {username},
+			"token":    {token},
+			"filehash": {filehash},
+			"filesize": {"132489256"},
+		})
 
-	// uploadID := jsonit.Get(body, "data").Get("UploadID").ToString()
-	// chunkSize := jsonit.Get(body, "data").Get("ChunkSize").ToInt()
-	// fmt.Printf("uploadid: %s chunksize: %d\n", uploadID, chunkSize)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
 
-	// filename := ""
-	// tgtURL = "http://localhost:7000/file/mpupload/uppart?" +
-	// "username=admin&token=" + token + "&uploadid=" + uploadID
+	uploadID := jsonit.Get(body, "data").Get("UploadID").ToString()
+	chunkSize := jsonit.Get(body, "data").Get("ChunkSize").ToInt()
+	fmt.Printf("uploadid: %s chunksize: %d\n", uploadID, chunkSize)
 
-	// multipartUpload(filename, tURL, chunkSize)
+	filename := ""
+	tgtURL = "http://localhost:7000/file/mpupload/uppart?" +
+		"username=admin&token=" + token + "&uploadid=" + uploadID
 
-	// resp, err = http.PostForm(
-	// 	"http://localhost:7000/file/mpupload/complete",
-	// 	url.Values{
-	// 		"username": {username},
-	// 		"token":    {token},
-	// 		"filehash": {filehash},
-	// 		"filesize": {"132489256"},
-	// 		"filename": {"go1.10.3.linux-amd64.tar.gz"},
-	// 		"uploadid": {uploadID},
-	// 	})
+	multipartUpload(filename, tURL, chunkSize)
 
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// 	os.Exit(-1)
-	// }
+	resp, err = http.PostForm(
+		"http://localhost:7000/file/mpupload/complete",
+		url.Values{
+			"username": {username},
+			"token":    {token},
+			"filehash": {filehash},
+			"filesize": {"132489256"},
+			"filename": {"go1.10.3.linux-amd64.tar.gz"},
+			"uploadid": {uploadID},
+		})
 
-	// defer resp.Body.Close()
-	// body, err = ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// 	os.Exit(-1)
-	// }
-	// fmt.Printf("complete result: %s\n", string(body))
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+
+	defer resp.Body.Close()
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(-1)
+	}
+	fmt.Printf("complete result: %s\n", string(body))
 }

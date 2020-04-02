@@ -15,7 +15,7 @@ func main() {
 	router.POST("/file/upload", handler.UploadHandler)
 	router.POST("/file/mpupload", handler.MultipartUploadHandler)
 	router.POST("/events", events)
-	router.GET("/file/mpupload/uppart", handler.UploadPartHandler)
+	router.POST("/file/mpupload/uppart", handler.UploadPartHandler)
 	// router.POST("/file/mpupload/complete", handler.CompleteUploadHandler)
 	// router.GET("file/mpupload/uppart", handler.UploadPartHandler)
 	// router.GET("/file/init", handler.InitialMultipartUploadHandler)

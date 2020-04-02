@@ -2,11 +2,12 @@ package handler
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -28,6 +29,11 @@ type MultipartUploadInfo struct {
 	UploadID   string
 	ChunkSize  int
 	ChunkCount int
+}
+
+type UploadInfo struct {
+	uploadid string
+	index    string
 }
 
 var lcoalPath string
@@ -64,9 +70,17 @@ func MultipartUploadHandler(c *gin.Context) {
 	fileMeta.FileSize = fileSize
 	filehash := util.MD5([]byte(fileMeta.FileName))
 
-	chunkSize := 5 * 1024 * 1024
+	var chunkSize int64
+	chunkSize = 5 * 1024 * 1024
+	var chunkCount int
+	if fileSize < chunkSize {
+		chunkCount = 1
+	} else {
+		chunkCount = int(math.Ceil(float64(fileSize / chunkSize)))
+	}
 
-	uploadID := initialMultipartUpload(fileSize, chunkSize, filehash)
+	fmt.Println("chunkCount=", chunkCount)
+	uploadID := initialMultipartUpload(fileSize, chunkCount, filehash)
 
 	f, err := os.Open(fileMeta.Location)
 
@@ -88,10 +102,12 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	for {
 		n, err := bfReader.Read(buf)
+		fmt.Printf("n=%d", n)
 		if n <= 0 {
 			break
 		}
 
+		fmt.Println("index=", index)
 		index++
 
 		bufCopied := make([]byte, chunkSize)
@@ -100,10 +116,11 @@ func MultipartUploadHandler(c *gin.Context) {
 		go func(b []byte, curIdx int) {
 			fmt.Printf("upload size: %d\n", len(b))
 
-			_, err := http.Post(
-				"http://127.0.0.1:7000/mpupload/uppart?uploadid="+uploadID+"&index="+strconv.Itoa(curIdx),
-				"multipart/form-data",
-				bytes.NewReader(b))
+			// data := fmt.Sprintf("uploadid=%s&index=%s", uploadID, strconv.Itoa(curIdx))
+			// fmt.Println(data)
+			_, err := http.PostForm(
+				"http://127.0.0.1:7000/file/mpupload/uppart",
+				url.Values{"uploadid": {uploadID}, "index": {strconv.Itoa(curIdx)}})
 
 			if err != nil {
 				fmt.Println(err)
@@ -126,14 +143,14 @@ func MultipartUploadHandler(c *gin.Context) {
 				fmt.Println(res)
 			}
 		}
+	}
 
-		if err = completeUpload(uploadID, filehash, fileMeta.FileName); err != nil {
-			fmt.Println("Failed to complete upload, err: ", err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"message": "Failed to complete upload",
-			})
-			return
-		}
+	if err = completeUpload(uploadID, filehash, fileMeta.FileName); err != nil {
+		fmt.Println("Failed to complete upload, err: ", err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Failed to complete upload",
+		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -152,20 +169,24 @@ func initialMultipartUpload(fileSize int64, chunkCount int, fileHash string) (up
 	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", chunkCount)
 	rConn.Do("HSET", "MP_"+uploadID, "filehash", fileHash)
 	rConn.Do("HSET", "MP_"+uploadID, "filesize", fileSize)
+	fmt.Println("filesize=", fileSize)
 
 	return uploadID
 }
 
 func UploadPartHandler(c *gin.Context) {
 
-	uploadID := c.Query("uploadid")
-	chunkIndex := c.Query("index")
+	uploadID := c.Request.FormValue("uploadid")
+	chunkIndex := c.Request.FormValue("index")
+	fmt.Println("uploadID: ", uploadID)
+	fmt.Println("uploadIndex: ", chunkIndex)
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
 	fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + chunkIndex
 	os.MkdirAll(path.Dir(fpath), 0744)
 	fd, err := os.Create(fpath)
+	fmt.Println(fpath)
 
 	if err != nil {
 		fmt.Println(err)
@@ -184,6 +205,7 @@ func UploadPartHandler(c *gin.Context) {
 	}
 
 	rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+chunkIndex, 1)
+	fmt.Println("upload part" + uploadID)
 }
 
 // completeUpload : 通知上传合并
@@ -200,6 +222,8 @@ func completeUpload(uploadID string, fileHash string, fileName string) (err erro
 	chunkCount := 0
 
 	for i := 0; i < len(data); i += 2 {
+		fmt.Println(i)
+		fmt.Println("length: " + strconv.Itoa(len(data)))
 		k := string(data[i].([]byte))
 		v := string(data[i+1].([]byte))
 		if k == "chunkcount" {
