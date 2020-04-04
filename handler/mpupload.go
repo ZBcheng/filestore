@@ -12,6 +12,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	rPool "moviesite-filestore/cache/redis"
@@ -21,6 +22,8 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/gin-gonic/gin"
 )
+
+var wg sync.WaitGroup
 
 // MultipartUploadInfo : initial info struct
 type MultipartUploadInfo struct {
@@ -112,8 +115,10 @@ func MultipartUploadHandler(c *gin.Context) {
 
 		bufCopied := make([]byte, chunkSize)
 		copy(bufCopied, buf)
+		wg.Add(1)
 
 		go func(b []byte, curIdx int) {
+			defer wg.Done()
 			fmt.Printf("upload size: %d\n", len(b))
 
 			// data := fmt.Sprintf("uploadid=%s&index=%s", uploadID, strconv.Itoa(curIdx))
@@ -136,14 +141,9 @@ func MultipartUploadHandler(c *gin.Context) {
 				fmt.Println("Failed to molti-part upload file, err: ", err.Error())
 			}
 		}
-
-		for idx := 0; idx < index; idx++ {
-			select {
-			case res := <-ch:
-				fmt.Println(res)
-			}
-		}
 	}
+
+	wg.Wait()
 
 	if err = completeUpload(uploadID, filehash, fileMeta.FileName); err != nil {
 		fmt.Println("Failed to complete upload, err: ", err.Error())
@@ -156,6 +156,7 @@ func MultipartUploadHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Multi-part upload compolete",
 	})
+	fmt.Println("Multi-part upload complete")
 
 }
 
@@ -174,6 +175,7 @@ func initialMultipartUpload(fileSize int64, chunkCount int, fileHash string) (up
 	return uploadID
 }
 
+// UploadPartHandler : 分块上传
 func UploadPartHandler(c *gin.Context) {
 
 	uploadID := c.Request.FormValue("uploadid")
@@ -210,6 +212,7 @@ func UploadPartHandler(c *gin.Context) {
 
 // completeUpload : 通知上传合并
 func completeUpload(uploadID string, fileHash string, fileName string) (err error) {
+	fmt.Println("complete")
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
@@ -220,6 +223,7 @@ func completeUpload(uploadID string, fileHash string, fileName string) (err erro
 
 	totalCount := 0
 	chunkCount := 0
+	fmt.Println("data: ", data)
 
 	for i := 0; i < len(data); i += 2 {
 		fmt.Println(i)
