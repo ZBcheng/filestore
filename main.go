@@ -15,12 +15,7 @@ func main() {
 	router.POST("/file/upload", handler.UploadHandler)
 	router.POST("/file/mpupload", handler.MultipartUploadHandler)
 	router.POST("/events", events)
-	router.POST("/file/mpupload/uppart", handler.UploadPartHandler)
-	// router.POST("/file/mpupload/complete", handler.CompleteUploadHandler)
-	// router.GET("file/mpupload/uppart", handler.UploadPartHandler)
-	// router.GET("/file/init", handler.InitialMultipartUploadHandler)
 	router.Run(":7000")
-	// fmt.Println(os.Open("/Users/zhangbicheng/Desktop/valley.png"))
 }
 
 func events(c *gin.Context) {
@@ -30,6 +25,4 @@ func events(c *gin.Context) {
 	fmt.Println("buf: " + string(buf[0:n]))
 	resp := map[string]string{"hello": "world"}
 	c.JSON(http.StatusOK, resp)
-	/*post_gwid := c.PostForm("name")
-	fmt.Println(post_gwid)*/
 }

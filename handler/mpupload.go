@@ -22,8 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var wg sync.WaitGroup
-
 // MultipartUploadInfo : initial info struct
 type MultipartUploadInfo struct {
 	Filehash   string
@@ -42,6 +40,8 @@ var lcoalPath string
 
 // MultipartUploadHandler : 分块上传
 func MultipartUploadHandler(c *gin.Context) {
+	var wg sync.WaitGroup
+
 	fpath := "/Users/zhangbicheng/Desktop/"
 	file, fHead, err := c.Request.FormFile("file")
 	if err != nil {
@@ -78,7 +78,7 @@ func MultipartUploadHandler(c *gin.Context) {
 	if fileSize < chunkSize {
 		chunkCount = 1
 	} else {
-		chunkCount = int(math.Ceil(float64(fileSize / chunkSize)))
+		chunkCount = int(math.Ceil(float64(fileSize) / float64(chunkSize)))
 	}
 
 	fmt.Println("chunkCount=", chunkCount)
@@ -99,40 +99,26 @@ func MultipartUploadHandler(c *gin.Context) {
 	bfReader := bufio.NewReader(f)
 	index := 0
 
-	ch := make(chan int)
 	buf := make([]byte, chunkSize)
 
 	for {
 		n, err := bfReader.Read(buf)
-		fmt.Printf("n=%d", n)
+
 		if n <= 0 {
 			break
 		}
 
 		fmt.Println("index=", index)
 		index++
+		wg.Add(1)
 
 		bufCopied := make([]byte, chunkSize)
 		copy(bufCopied, buf)
-		wg.Add(1)
 
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
-			fmt.Printf("upload size: %d\n", len(b))
-
-			// data := fmt.Sprintf("uploadid=%s&index=%s", uploadID, strconv.Itoa(curIdx))
-			// fmt.Println(data)
-
 			uploadPart(b, uploadID, index)
-			// _, err := http.PostForm(
-			// 	"http://127.0.0.1:7000/file/mpupload/uppart",
-			// 	url.Values{"uploadid": {uploadID}, "index": {strconv.Itoa(curIdx)}})
 
-			if err != nil {
-				fmt.Println(err)
-			}
-
-			ch <- curIdx
 		}(bufCopied[:n], index)
 
 		if err != nil {
@@ -146,7 +132,8 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	wg.Wait()
 
-	if err = completeUpload(uploadID, filehash, fileMeta.FileName); err != nil {
+	err = completeUpload(uploadID, filehash, fileMeta.FileName)
+	if err != nil {
 		fmt.Println("Failed to complete upload, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Failed to complete upload",
@@ -171,16 +158,16 @@ func initialMultipartUpload(fileSize int64, chunkCount int, fileHash string) (up
 	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", chunkCount)
 	rConn.Do("HSET", "MP_"+uploadID, "filehash", fileHash)
 	rConn.Do("HSET", "MP_"+uploadID, "filesize", fileSize)
-	fmt.Println("filesize=", fileSize)
 
 	return uploadID
 }
 
 func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
 	rConn := rPool.RedisPool().Get()
+	index := strconv.Itoa(chunkIndex)
 	defer rConn.Close()
 
-	fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + strconv.Itoa(chunkIndex)
+	fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + index
 	os.MkdirAll(path.Dir(fpath), 0744)
 	fd, err := os.Create(fpath)
 
@@ -192,43 +179,9 @@ func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
 	if _, err = fd.Write(buf); err != nil {
 		return err
 	}
-
+	rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+index, 1)
+	fmt.Print("chkidx_" + index + "upload success")
 	return nil
-}
-
-// UploadPartHandler : 分块上传
-func UploadPartHandler(c *gin.Context) {
-
-	uploadID := c.Request.FormValue("uploadid")
-	chunkIndex := c.Request.FormValue("index")
-	fmt.Println("uploadID: ", uploadID)
-	fmt.Println("uploadIndex: ", chunkIndex)
-	rConn := rPool.RedisPool().Get()
-	defer rConn.Close()
-
-	fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + chunkIndex
-	os.MkdirAll(path.Dir(fpath), 0744)
-	fd, err := os.Create(fpath)
-	fmt.Println(fpath)
-
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	defer fd.Close()
-
-	buf := make([]byte, 1024*1024)
-
-	for {
-		n, err := c.Request.Body.Read(buf)
-		fd.Write(buf[:n])
-		if err != nil {
-			break
-		}
-	}
-
-	rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+chunkIndex, 1)
-	fmt.Println("upload part" + uploadID)
 }
 
 // completeUpload : 通知上传合并
@@ -244,11 +197,8 @@ func completeUpload(uploadID string, fileHash string, fileName string) (err erro
 
 	totalCount := 0
 	chunkCount := 0
-	fmt.Println("data: ", data)
 
 	for i := 0; i < len(data); i += 2 {
-		fmt.Println(i)
-		fmt.Println("length: " + strconv.Itoa(len(data)))
 		k := string(data[i].([]byte))
 		v := string(data[i+1].([]byte))
 		if k == "chunkcount" {
@@ -258,6 +208,8 @@ func completeUpload(uploadID string, fileHash string, fileName string) (err erro
 		}
 	}
 
+	fmt.Println("totalCount: ", totalCount)
+	fmt.Println("chunkCount: ", chunkCount)
 	if totalCount != chunkCount {
 		return errors.New("invalid request")
 	}
