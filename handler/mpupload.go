@@ -75,13 +75,13 @@ func MultipartUploadHandler(c *gin.Context) {
 	var chunkSize int64
 	chunkSize = 5 * 1024 * 1024
 	var chunkCount int
+
 	if fileSize < chunkSize {
 		chunkCount = 1
 	} else {
 		chunkCount = int(math.Ceil(float64(fileSize) / float64(chunkSize)))
 	}
 
-	fmt.Println("chunkCount=", chunkCount)
 	uploadID := initialMultipartUpload(fileSize, chunkCount, filehash)
 
 	f, err := os.Open(fileMeta.Location)
@@ -132,11 +132,10 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	wg.Wait()
 
-	err = completeUpload(uploadID, filehash, fileMeta.FileName)
-	if err != nil {
+	if err = completeUpload(uploadID, filehash, fileMeta.FileName); err != nil {
 		fmt.Println("Failed to complete upload, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Failed to complete upload",
+			"message": "Failed to compete upload",
 		})
 		return
 	}
