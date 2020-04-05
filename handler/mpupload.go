@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -123,9 +122,11 @@ func MultipartUploadHandler(c *gin.Context) {
 
 			// data := fmt.Sprintf("uploadid=%s&index=%s", uploadID, strconv.Itoa(curIdx))
 			// fmt.Println(data)
-			_, err := http.PostForm(
-				"http://127.0.0.1:7000/file/mpupload/uppart",
-				url.Values{"uploadid": {uploadID}, "index": {strconv.Itoa(curIdx)}})
+
+			uploadPart(b, uploadID, index)
+			// _, err := http.PostForm(
+			// 	"http://127.0.0.1:7000/file/mpupload/uppart",
+			// 	url.Values{"uploadid": {uploadID}, "index": {strconv.Itoa(curIdx)}})
 
 			if err != nil {
 				fmt.Println(err)
@@ -173,6 +174,26 @@ func initialMultipartUpload(fileSize int64, chunkCount int, fileHash string) (up
 	fmt.Println("filesize=", fileSize)
 
 	return uploadID
+}
+
+func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
+	rConn := rPool.RedisPool().Get()
+	defer rConn.Close()
+
+	fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + strconv.Itoa(chunkIndex)
+	os.MkdirAll(path.Dir(fpath), 0744)
+	fd, err := os.Create(fpath)
+
+	if err != nil {
+		return err
+	}
+
+	defer fd.Close()
+	if _, err = fd.Write(buf); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // UploadPartHandler : 分块上传
