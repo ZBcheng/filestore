@@ -31,11 +31,6 @@ type MultipartUploadInfo struct {
 	ChunkCount int
 }
 
-type UploadInfo struct {
-	uploadid string
-	index    string
-}
-
 var lcoalPath string
 
 // MultipartUploadHandler : 分块上传
@@ -71,7 +66,6 @@ func MultipartUploadHandler(c *gin.Context) {
 	fileSize := fileInfo.Size()
 	fileMeta.FileSize = fileSize
 	fileMeta.FileHash = util.MD5([]byte(fileMeta.FileName))
-	// filehash := util.MD5([]byte(fileMeta.FileName))
 
 	var chunkSize int64
 	chunkSize = 5 * 1024 * 1024
