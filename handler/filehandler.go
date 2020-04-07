@@ -207,6 +207,7 @@ func completeUpload(up *UploadInfo) (err error) {
 		if err != nil {
 			return err
 		}
+
 		fd.Write(b)
 
 		if err = os.Remove(fpath); err != nil {
@@ -223,7 +224,9 @@ func completeUpload(up *UploadInfo) (err error) {
 	}
 
 	defer stmt.Close()
-	if _, err = stmt.Exec(up.fileMeta.FileHash, up.fileMeta.FileName, up.fileMeta.FileSize, up.fileMeta.Location, up.fileMeta.UploadAt); err != nil {
+
+	if _, err = stmt.Exec(up.fileMeta.FileHash, up.fileMeta.FileName,
+		up.fileMeta.FileSize, up.fileMeta.Location, up.fileMeta.UploadAt); err != nil {
 		return err
 	}
 

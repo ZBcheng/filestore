@@ -1,0 +1,7 @@
+CREATE TABLE tbl_file (
+    filehash varchar(100),
+    filename varchar(20),
+    filesize integer,
+    location varchar(30),
+    uploadtime timestamp
+);
