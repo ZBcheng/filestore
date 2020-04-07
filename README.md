@@ -24,10 +24,3 @@ CREATE TABLE tbl_file (
 ```
 go run main.go
 ```
-或编译运行
-```
-go build main.go
-```
-```
-./main.go
-```
