@@ -198,13 +198,19 @@ func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
 	defer fd.Close()
 
 	for i := 0; i < chunkCount; i++ {
-		fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + strconv.Itoa(i)
+		fpath := fMeta.Location + uploadID + "/" + strconv.Itoa(i)
 		b, err := ioutil.ReadFile(fpath)
 		if err != nil {
 			return err
 		}
 		fd.Write(b)
+
+		if err = os.Remove(fpath); err != nil {
+			return err
+		}
 	}
+
+	rConn.Do("DEL", "MP_"+uploadID)
 
 	return nil
 }
