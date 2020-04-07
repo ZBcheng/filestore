@@ -40,7 +40,7 @@ func UploadHandler(c *gin.Context) {
 
 	fpath := "/Users/zhangbicheng/Desktop/"
 	file, fHead, err := c.Request.FormFile("file")
-	// fileType := strings.Split(fHead.Filename, ".")[-1]
+
 	if err != nil {
 		fmt.Println("Failed to form file, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -48,27 +48,17 @@ func UploadHandler(c *gin.Context) {
 		})
 		return
 	}
+
 	defer file.Close()
 
 	fileMeta := meta.FileMeta{
 		FileName:  fHead.Filename,
 		FileHash:  util.MD5([]byte(fHead.Filename)),
-		Location:  fpath + fHead.Filename,
+		Location:  fpath,
+		FileSize:  fHead.Size,
 		ChunkSize: 5 * 1024 * 1024,
 		UploadAt:  time.Now().Format("2006-01-02 15:04:05"),
 	}
-
-	fileInfo, err := os.Stat(fileMeta.Location)
-	if err != nil {
-		fmt.Println("Failed to get fileInfo, err: ", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Failed to get file info",
-		})
-		return
-	}
-
-	fileSize := fileInfo.Size()
-	fileMeta.FileSize = fileSize
 
 	if fileMeta.FileSize < fileMeta.ChunkSize {
 		fileMeta.ChunkCount = 1
@@ -78,19 +68,7 @@ func UploadHandler(c *gin.Context) {
 
 	uploadID := initialMultipartUpload(fileMeta)
 
-	f, err := os.Open(fileMeta.Location)
-
-	if err != nil {
-		fmt.Println("Failed to open file, err: ", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Failed to open file",
-		})
-		return
-	}
-
-	defer f.Close()
-
-	bfReader := bufio.NewReader(f)
+	bfReader := bufio.NewReader(file)
 
 	buf := make([]byte, fileMeta.ChunkSize)
 
@@ -118,7 +96,7 @@ func UploadHandler(c *gin.Context) {
 
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
-			uploadPart(b, uploadID, curIdx)
+			uploadPart(b, uploadID, curIdx, fileMeta.Location)
 		}(bufCopied[:n], i)
 	}
 
@@ -153,13 +131,13 @@ func initialMultipartUpload(fmeta meta.FileMeta) (uploadID string) {
 	return uploadID
 }
 
-func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
+func uploadPart(buf []byte, uploadID string, chunkIndex int, location string) (err error) {
 
 	rConn := rPool.RedisPool().Get()
 	index := strconv.Itoa(chunkIndex)
 	defer rConn.Close()
 
-	fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + index
+	fpath := location + uploadID + "/" + index
 	os.MkdirAll(path.Dir(fpath), 0744)
 	fd, err := os.Create(fpath)
 
@@ -211,7 +189,7 @@ func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
 		return errors.New("invalid request")
 	}
 
-	fd, err := os.Create("/Users/zhangbicheng/Desktop/" + uploadID + "/" + fMeta.FileName)
+	fd, err := os.Create(fMeta.Location + uploadID + "/" + fMeta.FileName)
 
 	if err != nil {
 		return err
