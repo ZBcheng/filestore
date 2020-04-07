@@ -23,10 +23,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MultipartUploadInfo : initial info struct
-type MultipartUploadInfo struct {
-	Filehash   string
-	Filesize   int
+// UploadInfo : initial info struct
+type UploadInfo struct {
+	fileMeta   meta.FileMeta
 	UploadID   string
 	ChunkSize  int64
 	ChunkCount int
@@ -38,7 +37,7 @@ var lcoalPath string
 func UploadHandler(c *gin.Context) {
 	var wg sync.WaitGroup
 
-	fpath := "/Users/zhangbicheng/Desktop/"
+	fpath := "/root/Projects/files/"
 	file, fHead, err := c.Request.FormFile("file")
 
 	if err != nil {
@@ -51,28 +50,30 @@ func UploadHandler(c *gin.Context) {
 
 	defer file.Close()
 
-	fileMeta := meta.FileMeta{
-		FileName:  fHead.Filename,
-		FileHash:  util.MD5([]byte(fHead.Filename)),
-		Location:  fpath,
-		FileSize:  fHead.Size,
+	uploadInfo := UploadInfo{
+		fileMeta: meta.FileMeta{
+			FileName: fHead.Filename,
+			FileHash: util.MD5([]byte(fHead.Filename)),
+			Location: fpath,
+			FileSize: fHead.Size,
+			UploadAt: time.Now().Format("2006-01-02 15:04:05"),
+		},
 		ChunkSize: 5 * 1024 * 1024,
-		UploadAt:  time.Now().Format("2006-01-02 15:04:05"),
 	}
 
-	if fileMeta.FileSize < fileMeta.ChunkSize {
-		fileMeta.ChunkCount = 1
+	if uploadInfo.fileMeta.FileSize < uploadInfo.ChunkSize {
+		uploadInfo.ChunkCount = 1
 	} else {
-		fileMeta.ChunkCount = int(math.Ceil(float64(fileMeta.FileSize) / float64(fileMeta.ChunkSize)))
+		uploadInfo.ChunkCount = int(math.Ceil(float64(uploadInfo.fileMeta.FileSize) / float64(uploadInfo.ChunkSize)))
 	}
 
-	uploadID := initialMultipartUpload(fileMeta)
+	initialMultipartUpload(&uploadInfo)
 
 	bfReader := bufio.NewReader(file)
 
-	buf := make([]byte, fileMeta.ChunkSize)
+	buf := make([]byte, uploadInfo.ChunkSize)
 
-	for i := 0; i < fileMeta.ChunkCount; i++ {
+	for i := 0; i < uploadInfo.ChunkCount; i++ {
 		n, err := bfReader.Read(buf)
 		if err != nil {
 			if err == io.EOF {
@@ -91,18 +92,18 @@ func UploadHandler(c *gin.Context) {
 		}
 		wg.Add(1)
 
-		bufCopied := make([]byte, fileMeta.ChunkSize)
+		bufCopied := make([]byte, uploadInfo.ChunkSize)
 		copy(bufCopied, buf)
 
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
-			uploadPart(b, uploadID, curIdx, fileMeta.Location)
+			uploadPart(b, curIdx, &uploadInfo)
 		}(bufCopied[:n], i)
 	}
 
 	wg.Wait()
 
-	if err = completeUpload(fileMeta, uploadID); err != nil {
+	if err = completeUpload(&uploadInfo); err != nil {
 		fmt.Println("Failed to complete upload, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Failed to compete upload",
@@ -111,33 +112,33 @@ func UploadHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Multi-part upload compolete",
+		"message": "Upload file complete",
 	})
-	fmt.Println("Multi-part upload complete")
-
 }
 
 // initialMultipartUpload : 初始化分块上传
-func initialMultipartUpload(fmeta meta.FileMeta) (uploadID string) {
+func initialMultipartUpload(up *UploadInfo) {
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
-	uploadID = "bee" + fmt.Sprintf("%x", time.Now().UnixNano())
+	uploadID := "bee" + fmt.Sprintf("%x", time.Now().UnixNano())
 
-	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", fmeta.ChunkCount)
-	rConn.Do("HSET", "MP_"+uploadID, "filehash", fmeta.FileHash)
-	rConn.Do("HSET", "MP_"+uploadID, "filesize", fmeta.FileSize)
+	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", up.ChunkCount)
+	rConn.Do("HSET", "MP_"+uploadID, "filehash", up.fileMeta.FileHash)
+	rConn.Do("HSET", "MP_"+uploadID, "filesize", up.fileMeta.FileSize)
 
-	return uploadID
+	up.UploadID = uploadID
+
 }
 
-func uploadPart(buf []byte, uploadID string, chunkIndex int, location string) (err error) {
+// uploadPart : 上传块文件
+func uploadPart(buf []byte, chunkIndex int, up *UploadInfo) (err error) {
 
 	rConn := rPool.RedisPool().Get()
 	index := strconv.Itoa(chunkIndex)
 	defer rConn.Close()
 
-	fpath := location + uploadID + "/" + index
+	fpath := up.fileMeta.Location + up.UploadID + "/" + index
 	os.MkdirAll(path.Dir(fpath), 0744)
 	fd, err := os.Create(fpath)
 
@@ -149,7 +150,7 @@ func uploadPart(buf []byte, uploadID string, chunkIndex int, location string) (e
 	if _, err = fd.Write(buf); err != nil {
 		return err
 	}
-	if _, err = rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+index, 1); err != nil {
+	if _, err = rConn.Do("HSET", "MP_"+up.UploadID, "chkidx_"+index, 1); err != nil {
 		return err
 	}
 
@@ -157,13 +158,13 @@ func uploadPart(buf []byte, uploadID string, chunkIndex int, location string) (e
 	return nil
 }
 
-// completeUpload : 通知上传合并
-func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
-	fmt.Println("complete")
+// completeUpload : 合并分块
+func completeUpload(up *UploadInfo) (err error) {
+	fmt.Println("Upload complete!")
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
-	data, err := redis.Values(rConn.Do("HGETALL", "MP_"+uploadID))
+	data, err := redis.Values(rConn.Do("HGETALL", "MP_"+up.UploadID))
 	if err != nil {
 		return err
 	}
@@ -182,14 +183,11 @@ func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
 		}
 	}
 
-	fmt.Println("totalCount: ", totalCount)
-	fmt.Println("chunkCount: ", chunkCount)
-
 	if totalCount != chunkCount {
 		return errors.New("invalid request")
 	}
 
-	fd, err := os.Create(fMeta.Location + uploadID + "/" + fMeta.FileName)
+	fd, err := os.Create(up.fileMeta.Location + up.UploadID + "/" + up.fileMeta.FileName)
 
 	if err != nil {
 		return err
@@ -198,7 +196,7 @@ func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
 	defer fd.Close()
 
 	for i := 0; i < chunkCount; i++ {
-		fpath := fMeta.Location + uploadID + "/" + strconv.Itoa(i)
+		fpath := up.fileMeta.Location + up.UploadID + "/" + strconv.Itoa(i)
 		b, err := ioutil.ReadFile(fpath)
 		if err != nil {
 			return err
@@ -210,7 +208,8 @@ func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
 		}
 	}
 
-	rConn.Do("DEL", "MP_"+uploadID)
+	fmt.Println("Write file complete!")
+	rConn.Do("DEL", "MP_"+up.UploadID)
 
 	return nil
 }

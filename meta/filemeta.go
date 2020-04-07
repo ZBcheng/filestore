@@ -2,13 +2,11 @@ package meta
 
 // FileMeta : file struct
 type FileMeta struct {
-	FileHash   string
-	FileName   string
-	FileSize   int64
-	ChunkSize  int64
-	ChunkCount int
-	Location   string
-	UploadAt   string
+	FileHash string
+	FileName string
+	FileSize int64
+	Location string
+	UploadAt string
 }
 
 var fileMetas map[string]FileMeta
