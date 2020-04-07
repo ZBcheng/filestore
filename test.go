@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"strings"
+	db "filestore/db/postgres"
 )
 
 func main() {
-	fileName := "testtxt"
-	fileType := strings.Split(fileName, ".")
-	fmt.Println(fileType[len(fileType)-1])
+	conn := db.DBConn()
+	conn.Ping()
 }

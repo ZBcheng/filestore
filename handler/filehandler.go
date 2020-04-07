@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	rPool "filestore/cache/redis"
+	pg "filestore/db/postgres"
 	"filestore/meta"
 	"filestore/util"
 
@@ -31,13 +33,17 @@ type UploadInfo struct {
 	ChunkCount int
 }
 
-var lcoalPath string
+var pgConn *sql.DB
+
+func init() {
+	pgConn = pg.DBConn()
+}
 
 // UploadHandler : 文件上传
 func UploadHandler(c *gin.Context) {
 	var wg sync.WaitGroup
 
-	fpath := "/root/Projects/files/"
+	fpath := "/Users/zhangbicheng/Desktop/"
 	file, fHead, err := c.Request.FormFile("file")
 
 	if err != nil {
@@ -210,6 +216,16 @@ func completeUpload(up *UploadInfo) (err error) {
 
 	fmt.Println("Write file complete!")
 	rConn.Do("DEL", "MP_"+up.UploadID)
+
+	stmt, err := pgConn.Prepare("INSERT INTO tbl_file values($1, $2, $3, $4, $5)")
+	if err != nil {
+		return err
+	}
+
+	defer stmt.Close()
+	if _, err = stmt.Exec(up.fileMeta.FileHash, up.fileMeta.FileName, up.fileMeta.FileSize, up.fileMeta.Location, up.fileMeta.UploadAt); err != nil {
+		return err
+	}
 
 	return nil
 }
