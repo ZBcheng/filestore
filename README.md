@@ -1,5 +1,5 @@
 # filestore
-分布式文件传输客户端，支持文件分块上传，断点续传(TODO)等功能
+分布式文件存储客户端，支持文件分块上传，断点续传(TODO)等功能
 ### Getting Started
 启动redis server
 ```
