@@ -2,7 +2,7 @@ package meta
 
 // FileMeta : file struct
 type FileMeta struct {
-	FileID   string
+	FileHash string
 	FileName string
 	FileSize int64
 	Location string
@@ -17,17 +17,17 @@ func init() {
 
 // UpdateFileMeta : add or update a file
 func UpdateFileMeta(fmeta FileMeta) {
-	fileMetas[fmeta.FileID] = fmeta
+	fileMetas[fmeta.FileHash] = fmeta
 }
 
 // GetFileMeta : get a file
-func GetFileMeta(fileID string) FileMeta {
-	return fileMetas[fileID]
+func GetFileMeta(fileHash string) FileMeta {
+	return fileMetas[fileHash]
 }
 
 // RemoveFileMeta : delete a file
-func RemoveFileMeta(fileID string) {
-	delete(fileMetas, fileID)
+func RemoveFileMeta(fileHash string) {
+	delete(fileMetas, fileHash)
 }
 
 func GetFileSize(filename string, filepath string) {}

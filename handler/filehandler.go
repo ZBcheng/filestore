@@ -70,7 +70,8 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	fileSize := fileInfo.Size()
 	fileMeta.FileSize = fileSize
-	filehash := util.MD5([]byte(fileMeta.FileName))
+	fileMeta.FileHash = util.MD5([]byte(fileMeta.FileName))
+	// filehash := util.MD5([]byte(fileMeta.FileName))
 
 	var chunkSize int64
 	chunkSize = 5 * 1024 * 1024
@@ -82,7 +83,7 @@ func MultipartUploadHandler(c *gin.Context) {
 		chunkCount = int(math.Ceil(float64(fileSize) / float64(chunkSize)))
 	}
 
-	uploadID := initialMultipartUpload(fileSize, chunkCount, filehash)
+	uploadID := initialMultipartUpload(fileMeta, chunkCount)
 
 	f, err := os.Open(fileMeta.Location)
 
@@ -97,19 +98,26 @@ func MultipartUploadHandler(c *gin.Context) {
 	defer f.Close()
 
 	bfReader := bufio.NewReader(f)
-	index := 0
 
 	buf := make([]byte, chunkSize)
 
-	for {
+	for i := 0; i < chunkCount; i++ {
 		n, err := bfReader.Read(buf)
-
-		if n <= 0 {
-			break
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"message": "Failed to divide file",
+				})
+				return
+			}
 		}
-
-		fmt.Println("index=", index)
-		index++
+		if n <= 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"message": "Failed to divide file",
+			})
+		}
 		wg.Add(1)
 
 		bufCopied := make([]byte, chunkSize)
@@ -117,22 +125,13 @@ func MultipartUploadHandler(c *gin.Context) {
 
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
-			uploadPart(b, uploadID, index)
-
-		}(bufCopied[:n], index)
-
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				fmt.Println("Failed to molti-part upload file, err: ", err.Error())
-			}
-		}
+			uploadPart(b, uploadID, i)
+		}(bufCopied[:n], i)
 	}
 
 	wg.Wait()
 
-	if err = completeUpload(uploadID, filehash, fileMeta.FileName); err != nil {
+	if err = completeUpload(uploadID); err != nil {
 		fmt.Println("Failed to complete upload, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Failed to compete upload",
@@ -148,20 +147,21 @@ func MultipartUploadHandler(c *gin.Context) {
 }
 
 // initialMultipartUpload : 初始化分块上传
-func initialMultipartUpload(fileSize int64, chunkCount int, fileHash string) (uploadID string) {
+func initialMultipartUpload(fmeta meta.FileMeta, chunkCount int) (uploadID string) {
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
 	uploadID = "bee" + fmt.Sprintf("%x", time.Now().UnixNano())
 
 	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", chunkCount)
-	rConn.Do("HSET", "MP_"+uploadID, "filehash", fileHash)
-	rConn.Do("HSET", "MP_"+uploadID, "filesize", fileSize)
+	rConn.Do("HSET", "MP_"+uploadID, "filehash", fmeta.FileHash)
+	rConn.Do("HSET", "MP_"+uploadID, "filesize", fmeta.FileSize)
 
 	return uploadID
 }
 
 func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
+
 	rConn := rPool.RedisPool().Get()
 	index := strconv.Itoa(chunkIndex)
 	defer rConn.Close()
@@ -178,13 +178,16 @@ func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
 	if _, err = fd.Write(buf); err != nil {
 		return err
 	}
-	rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+index, 1)
-	fmt.Print("chkidx_" + index + "upload success")
+	if _, err = rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+index, 1); err != nil {
+		return err
+	}
+
+	fmt.Println("chkidx_" + index + " upload success")
 	return nil
 }
 
 // completeUpload : 通知上传合并
-func completeUpload(uploadID string, fileHash string, fileName string) (err error) {
+func completeUpload(uploadID string) (err error) {
 	fmt.Println("complete")
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
