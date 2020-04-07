@@ -119,7 +119,7 @@ func MultipartUploadHandler(c *gin.Context) {
 
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
-			uploadPart(b, uploadID, i)
+			uploadPart(b, uploadID, curIdx)
 		}(bufCopied[:n], i)
 	}
 
