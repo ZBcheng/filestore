@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	rPool "moviesite-filestore/cache/redis"
-	"moviesite-filestore/meta"
-	"moviesite-filestore/util"
+	rPool "filestore/cache/redis"
+	"filestore/meta"
+	"filestore/util"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/gin-gonic/gin"

@@ -1,4 +1,4 @@
-module moviesite-filestore
+module filestore
 
 go 1.13
 

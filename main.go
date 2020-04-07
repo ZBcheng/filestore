@@ -1,8 +1,8 @@
 package main
 
 import (
-	"moviesite-filestore/handler"
-	"moviesite-filestore/util"
+	"filestore/handler"
+	"filestore/util"
 
 	"github.com/gin-gonic/gin"
 )
