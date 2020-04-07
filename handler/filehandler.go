@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -27,18 +28,19 @@ type MultipartUploadInfo struct {
 	Filehash   string
 	Filesize   int
 	UploadID   string
-	ChunkSize  int
+	ChunkSize  int64
 	ChunkCount int
 }
 
 var lcoalPath string
 
-// MultipartUploadHandler : 分块上传
-func MultipartUploadHandler(c *gin.Context) {
+// UploadHandler : 文件上传
+func UploadHandler(c *gin.Context) {
 	var wg sync.WaitGroup
 
 	fpath := "/Users/zhangbicheng/Desktop/"
 	file, fHead, err := c.Request.FormFile("file")
+	// fileType := strings.Split(fHead.Filename, ".")[-1]
 	if err != nil {
 		fmt.Println("Failed to form file, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -49,9 +51,11 @@ func MultipartUploadHandler(c *gin.Context) {
 	defer file.Close()
 
 	fileMeta := meta.FileMeta{
-		FileName: fHead.Filename,
-		Location: fpath + fHead.Filename,
-		UploadAt: time.Now().Format("2006-01-02 15:04:05"),
+		FileName:  fHead.Filename,
+		FileHash:  util.MD5([]byte(fHead.Filename)),
+		Location:  fpath + fHead.Filename,
+		ChunkSize: 5 * 1024 * 1024,
+		UploadAt:  time.Now().Format("2006-01-02 15:04:05"),
 	}
 
 	fileInfo, err := os.Stat(fileMeta.Location)
@@ -65,19 +69,14 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	fileSize := fileInfo.Size()
 	fileMeta.FileSize = fileSize
-	fileMeta.FileHash = util.MD5([]byte(fileMeta.FileName))
 
-	var chunkSize int64
-	chunkSize = 5 * 1024 * 1024
-	var chunkCount int
-
-	if fileSize < chunkSize {
-		chunkCount = 1
+	if fileMeta.FileSize < fileMeta.ChunkSize {
+		fileMeta.ChunkCount = 1
 	} else {
-		chunkCount = int(math.Ceil(float64(fileSize) / float64(chunkSize)))
+		fileMeta.ChunkCount = int(math.Ceil(float64(fileMeta.FileSize) / float64(fileMeta.ChunkSize)))
 	}
 
-	uploadID := initialMultipartUpload(fileMeta, chunkCount)
+	uploadID := initialMultipartUpload(fileMeta)
 
 	f, err := os.Open(fileMeta.Location)
 
@@ -93,9 +92,9 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	bfReader := bufio.NewReader(f)
 
-	buf := make([]byte, chunkSize)
+	buf := make([]byte, fileMeta.ChunkSize)
 
-	for i := 0; i < chunkCount; i++ {
+	for i := 0; i < fileMeta.ChunkCount; i++ {
 		n, err := bfReader.Read(buf)
 		if err != nil {
 			if err == io.EOF {
@@ -114,7 +113,7 @@ func MultipartUploadHandler(c *gin.Context) {
 		}
 		wg.Add(1)
 
-		bufCopied := make([]byte, chunkSize)
+		bufCopied := make([]byte, fileMeta.ChunkSize)
 		copy(bufCopied, buf)
 
 		go func(b []byte, curIdx int) {
@@ -125,7 +124,7 @@ func MultipartUploadHandler(c *gin.Context) {
 
 	wg.Wait()
 
-	if err = completeUpload(uploadID); err != nil {
+	if err = completeUpload(fileMeta, uploadID); err != nil {
 		fmt.Println("Failed to complete upload, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Failed to compete upload",
@@ -141,13 +140,13 @@ func MultipartUploadHandler(c *gin.Context) {
 }
 
 // initialMultipartUpload : 初始化分块上传
-func initialMultipartUpload(fmeta meta.FileMeta, chunkCount int) (uploadID string) {
+func initialMultipartUpload(fmeta meta.FileMeta) (uploadID string) {
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
 	uploadID = "bee" + fmt.Sprintf("%x", time.Now().UnixNano())
 
-	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", chunkCount)
+	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", fmeta.ChunkCount)
 	rConn.Do("HSET", "MP_"+uploadID, "filehash", fmeta.FileHash)
 	rConn.Do("HSET", "MP_"+uploadID, "filesize", fmeta.FileSize)
 
@@ -181,7 +180,7 @@ func uploadPart(buf []byte, uploadID string, chunkIndex int) (err error) {
 }
 
 // completeUpload : 通知上传合并
-func completeUpload(uploadID string) (err error) {
+func completeUpload(fMeta meta.FileMeta, uploadID string) (err error) {
 	fmt.Println("complete")
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
@@ -197,6 +196,7 @@ func completeUpload(uploadID string) (err error) {
 	for i := 0; i < len(data); i += 2 {
 		k := string(data[i].([]byte))
 		v := string(data[i+1].([]byte))
+
 		if k == "chunkcount" {
 			totalCount, _ = strconv.Atoi(v)
 		} else if strings.HasPrefix(k, "chkidx_") && v == "1" {
@@ -206,8 +206,26 @@ func completeUpload(uploadID string) (err error) {
 
 	fmt.Println("totalCount: ", totalCount)
 	fmt.Println("chunkCount: ", chunkCount)
+
 	if totalCount != chunkCount {
 		return errors.New("invalid request")
+	}
+
+	fd, err := os.Create("/Users/zhangbicheng/Desktop/" + uploadID + "/" + fMeta.FileName)
+
+	if err != nil {
+		return err
+	}
+
+	defer fd.Close()
+
+	for i := 0; i < chunkCount; i++ {
+		fpath := "/Users/zhangbicheng/Desktop/" + uploadID + "/" + strconv.Itoa(i)
+		b, err := ioutil.ReadFile(fpath)
+		if err != nil {
+			return err
+		}
+		fd.Write(b)
 	}
 
 	return nil
