@@ -41,7 +41,7 @@ func init() {
 
 	if err != nil {
 		fmt.Println("Failed to read db.conf, err: ", err.Error())
-		os.Exit(-1)
+		os.Exit(1)
 	}
 
 	maxIdleCount, _ := config.GetValue("redis", "MaxIdle")

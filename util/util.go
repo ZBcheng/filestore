@@ -2,6 +2,7 @@ package util
 
 import (
 	"crypto/md5"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -9,8 +10,16 @@ import (
 	"os"
 	"strings"
 
+	pg "filestore/db/postgres"
+
 	"github.com/gin-gonic/gin"
 )
+
+var db *sql.DB
+
+func init() {
+	db = pg.DBConn()
+}
 
 // Cors : 跨域请求
 func Cors() gin.HandlerFunc {
@@ -56,6 +65,7 @@ func FileMD5(file *os.File) string {
 	return hex.EncodeToString(_md5.Sum(nil))
 }
 
+// MD5 : 创建文件唯一标记
 func MD5(data []byte) string {
 	_md5 := md5.New()
 	_md5.Write(data)
