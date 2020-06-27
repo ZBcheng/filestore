@@ -8,6 +8,7 @@ require (
 	github.com/arstd/log v0.0.0-20200414075513-0888823dd60f
 	github.com/garyburd/redigo v1.6.0
 	github.com/gin-gonic/gin v1.6.3
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/lib/pq v1.7.0
 	github.com/smartystreets/goconvey v1.6.4 // indirect

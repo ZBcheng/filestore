@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	RdConf redisConfig `toml:"redis"`
-	PgConf pgConfig    `toml:"postgres"`
+	RdConf    redisConfig `toml:"redis"`
+	MysqlConf mysqlConfig `toml:"mysql"`
+	PgConf    pgConfig    `toml:"postgres"`
 }
 
 type redisConfig struct {
@@ -16,6 +17,14 @@ type redisConfig struct {
 	Port      string `toml:"port"`
 	MaxIdle   int    `toml:"maxIdle"`
 	MaxActive int    `toml:"maxActive"`
+}
+
+type mysqlConfig struct {
+	Host     string `toml:"host"`
+	Port     string `toml:"port"`
+	User     string `toml:"username"`
+	DBName   string `toml:"dbname"`
+	Password string `toml:"password"`
 }
 
 type pgConfig struct {
