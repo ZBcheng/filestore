@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	pg "filestore/db/postgres"
+	pg "github.com/zbcheng/filestore/drivers/postgres"
 
 	"github.com/gin-gonic/gin"
 )

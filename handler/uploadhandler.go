@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	rPool "filestore/cache/redis"
-	pg "filestore/db/postgres"
-	"filestore/meta"
-	"filestore/util"
+	pg "github.com/zbcheng/filestore/drivers/postgres"
+	rPool "github.com/zbcheng/filestore/drivers/redis"
+	"github.com/zbcheng/filestore/meta"
+	"github.com/zbcheng/filestore/util"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/gin-gonic/gin"
@@ -116,7 +116,9 @@ func UploadHandler(c *gin.Context) {
 
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
-			uploadPart(b, curIdx, &uploadInfo)
+			if err = uploadPart(b, curIdx, &uploadInfo); err != nil {
+				return
+			}
 		}(bufCopied[:n], i)
 	}
 
@@ -137,14 +139,22 @@ func UploadHandler(c *gin.Context) {
 
 // initialUpload : 初始化分块上传
 func initialUpload(up *UploadInfo) {
+
+	var err error
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
 	uploadID := "bee" + fmt.Sprintf("%x", time.Now().UnixNano())
 
-	rConn.Do("HSET", "MP_"+uploadID, "chunkcount", up.ChunkCount)
-	rConn.Do("HSET", "MP_"+uploadID, "filehash", up.fileMeta.FileHash)
-	rConn.Do("HSET", "MP_"+uploadID, "filesize", up.fileMeta.FileSize)
+	if _, err = rConn.Do("HSET", "MP_"+uploadID, "chunkcount", up.ChunkCount); err != nil {
+		return
+	}
+	if _, err = rConn.Do("HSET", "MP_"+uploadID, "filehash", up.fileMeta.FileHash); err != nil {
+		return
+	}
+	if _, err = rConn.Do("HSET", "MP_"+uploadID, "filesize", up.fileMeta.FileSize); err != nil {
+		return
+	}
 
 	up.UploadID = uploadID
 
@@ -158,7 +168,10 @@ func uploadPart(buf []byte, chunkIndex int, up *UploadInfo) (err error) {
 	defer rConn.Close()
 
 	fpath := up.fileMeta.Location + up.UploadID + "/" + index
-	os.MkdirAll(path.Dir(fpath), 0744)
+
+	if err = os.MkdirAll(path.Dir(fpath), 0744); err != nil {
+		return err
+	}
 	fd, err := os.Create(fpath)
 
 	if err != nil {
@@ -221,7 +234,9 @@ func completeUpload(up *UploadInfo) (err error) {
 			return err
 		}
 
-		fd.Write(b)
+		if _, err = fd.Write(b); err != nil {
+			return err
+		}
 
 		if err = os.Remove(fpath); err != nil {
 			return err
@@ -229,7 +244,9 @@ func completeUpload(up *UploadInfo) (err error) {
 	}
 
 	fmt.Println("Write file complete!")
-	rConn.Do("DEL", "MP_"+up.UploadID)
+	if _, err = rConn.Do("DEL", "MP_"+up.UploadID); err != nil {
+		return err
+	}
 
 	stmt, err := pgConn.Prepare("INSERT INTO tbl_file values($1, $2, $3, $4, $5)")
 	if err != nil {

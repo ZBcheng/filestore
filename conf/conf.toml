@@ -1,0 +1,15 @@
+[crawler]
+host = "120.55.41.64"
+
+[redis]
+host = "localhost"
+port = "6379"
+maxIdle = 50
+maxActive = 30
+
+[postgres]
+host = "localhost"
+port = "5432"
+username = "postgres"
+dbname = "filestore"
+password = "0000"

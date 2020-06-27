@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"filestore/meta"
+	"github.com/zbcheng/filestore/meta"
 )
 
 // DownloadInfo : 下载信息结构

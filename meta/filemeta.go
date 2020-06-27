@@ -2,8 +2,9 @@ package meta
 
 import (
 	"database/sql"
-	pg "filestore/db/postgres"
 	"fmt"
+
+	pg "github.com/zbcheng/filestore/drivers/postgres"
 )
 
 // FileMeta : file struct
@@ -44,8 +45,8 @@ func GetFileMeta(fileHash string) (FileMeta, error) {
 	return fileMeta, nil
 }
 
-// RemoveFileMetaDB : remove file info from db
-func RemoveFileMetaDB(fileHash string) error {
+// RemoveFileMeta : remove file info from db
+func RemoveFileMeta(fileHash string) error {
 	stmt, err := db.Prepare("DELETE FROM tbl_file where filehash=($1)")
 	if err != nil {
 		return err
@@ -83,9 +84,4 @@ func FileExists(f FileMeta) (exists bool, err error) {
 	}
 
 	return false, nil
-}
-
-// RemoveFileMeta : delete a file
-func RemoveFileMeta(fileHash string) {
-	delete(fileMetas, fileHash)
 }
