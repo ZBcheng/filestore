@@ -10,7 +10,14 @@ func TestSingup(t *testing.T) {
 }
 
 func TestSignin(t *testing.T) {
-	_, err := UserSignin("Amy", "amy")
+	_, err := UserSignin("Amy", "amy or WHERE 1=1")
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestUpdateToken(t *testing.T) {
+	_, err := UpdateToken("Amy", "0101010")
 	if err != nil {
 		t.Error(err)
 	}

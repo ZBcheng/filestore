@@ -15,6 +15,7 @@ var (
 	maxIdle   int
 	maxActive int
 	host      string
+	port      string
 )
 
 // newRedisPool : 创建redis连接池
@@ -25,7 +26,7 @@ func newRedisPool() *redis.Pool {
 		IdleTimeout: 300 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			// 1. 打开连接
-			c, err := redis.Dial("tcp", host)
+			c, err := redis.Dial("tcp", host+":"+port)
 			if err != nil {
 				fmt.Println(err)
 				return nil, err
@@ -41,6 +42,8 @@ func init() {
 	maxActive = config.RdConf.MaxActive
 
 	host = config.RdConf.Host
+	port = config.RdConf.Port
+
 	pool = newRedisPool()
 
 }

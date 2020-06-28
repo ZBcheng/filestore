@@ -16,9 +16,10 @@ import (
 	"sync"
 	"time"
 
-	pg "github.com/zbcheng/filestore/drivers/postgres"
+	mysql "github.com/zbcheng/filestore/drivers/mysql"
 	rPool "github.com/zbcheng/filestore/drivers/redis"
 	"github.com/zbcheng/filestore/meta"
+	"github.com/zbcheng/filestore/models"
 	"github.com/zbcheng/filestore/util"
 
 	"github.com/garyburd/redigo/redis"
@@ -27,16 +28,16 @@ import (
 
 // UploadInfo : initial info struct
 type UploadInfo struct {
-	fileMeta   meta.FileMeta
+	fileMeta   models.FileMeta
 	UploadID   string
 	ChunkSize  int64
 	ChunkCount int
 }
 
-var pgConn *sql.DB
+var sqlConn *sql.DB
 
 func init() {
-	pgConn = pg.DBConn()
+	sqlConn = mysql.DBConn()
 }
 
 // UploadHandler : 文件上传
@@ -57,9 +58,9 @@ func UploadHandler(c *gin.Context) {
 	defer file.Close()
 
 	uploadInfo := UploadInfo{
-		fileMeta: meta.FileMeta{
+		fileMeta: models.FileMeta{
 			FileName: fHead.Filename,
-			FileHash: util.MD5([]byte(fHead.Filename)),
+			FileHash: util.Sha1([]byte(fHead.Filename)),
 			Location: fpath,
 			FileSize: fHead.Size,
 			UploadAt: time.Now().Format("2006-01-02 15:04:05"),
@@ -192,7 +193,6 @@ func uploadPart(buf []byte, chunkIndex int, up *UploadInfo) (err error) {
 
 // completeUpload : 合并分块
 func completeUpload(up *UploadInfo) (err error) {
-	fmt.Println("Upload complete!")
 	rConn := rPool.RedisPool().Get()
 	defer rConn.Close()
 
@@ -245,11 +245,14 @@ func completeUpload(up *UploadInfo) (err error) {
 
 	fmt.Println("Write file complete!")
 	if _, err = rConn.Do("DEL", "MP_"+up.UploadID); err != nil {
+		fmt.Println("Failed to DEL:", err)
 		return err
 	}
 
-	stmt, err := pgConn.Prepare("INSERT INTO tbl_file values($1, $2, $3, $4, $5)")
+	stmt, err := sqlConn.Prepare("INSERT INTO tbl_file (`file_sha1`, `file_name`, `file_size`," +
+		"`file_addr`, `update_at`) values(?, ?, ?, ?, ?)")
 	if err != nil {
+		fmt.Println("Failed to prepare sql", err)
 		return err
 	}
 
@@ -257,7 +260,12 @@ func completeUpload(up *UploadInfo) (err error) {
 
 	if _, err = stmt.Exec(up.fileMeta.FileHash, up.fileMeta.FileName,
 		up.fileMeta.FileSize, up.fileMeta.Location, up.fileMeta.UploadAt); err != nil {
+		fmt.Println("Failed to exec sql:", err)
 		return err
+	}
+
+	if suc := meta.UpdateFileMetaDB(up.fileMeta); !suc {
+		fmt.Println("Update DB failed")
 	}
 
 	return nil

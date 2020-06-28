@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	pg "github.com/zbcheng/filestore/drivers/postgres"
+	drivers "github.com/zbcheng/filestore/drivers/mysql"
+	"github.com/zbcheng/filestore/models"
+	repo "github.com/zbcheng/filestore/repository"
 )
 
 // FileMeta : file struct
@@ -21,12 +23,18 @@ var db *sql.DB
 
 func init() {
 	fileMetas = make(map[string]FileMeta)
-	db = pg.DBConn()
+	db = drivers.DBConn()
 }
 
 // UpdateFileMeta : add or update a file
 func UpdateFileMeta(fmeta FileMeta) {
 	fileMetas[fmeta.FileHash] = fmeta
+}
+
+// UpdateFileMetaDB: 新增/更新文件元信息到Mysql
+func UpdateFileMetaDB(fmeta models.FileMeta) bool {
+	return repo.OnFileUploadFinished(
+		fmeta.FileHash, fmeta.FileName, fmeta.FileSize, fmeta.Location)
 }
 
 // GetFileMeta : get a file
@@ -63,8 +71,8 @@ func RemoveFileMeta(fileHash string) error {
 }
 
 // FileExists : 判断文件是否在db中存在
-func FileExists(f FileMeta) (exists bool, err error) {
-	sql := fmt.Sprintf("SELECT filesize FROM tbl_file WHERE filehash='%s'", f.FileHash)
+func FileExists(f models.FileMeta) (exists bool, err error) {
+	sql := fmt.Sprintf("SELECT file_size FROM tbl_file WHERE file_sha1='%s'", f.FileHash)
 	rows, err := db.Query(sql)
 
 	if err != nil {

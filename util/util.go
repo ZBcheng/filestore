@@ -2,6 +2,7 @@ package util
 
 import (
 	"crypto/md5"
+	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	pg "github.com/zbcheng/filestore/drivers/postgres"
+	mysql "github.com/zbcheng/filestore/drivers/mysql"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +19,7 @@ import (
 var db *sql.DB
 
 func init() {
-	db = pg.DBConn()
+	db = mysql.DBConn()
 }
 
 // Cors : 跨域请求
@@ -70,4 +71,16 @@ func MD5(data []byte) string {
 	_md5 := md5.New()
 	_md5.Write(data)
 	return hex.EncodeToString(_md5.Sum([]byte("")))
+}
+
+func FileSha1(file *os.File) string {
+	_sha1 := sha1.New()
+	io.Copy(_sha1, file)
+	return hex.EncodeToString(_sha1.Sum(nil))
+}
+
+func Sha1(data []byte) string {
+	_sha1 := sha1.New()
+	_sha1.Write(data)
+	return hex.EncodeToString(_sha1.Sum(nil))
 }
