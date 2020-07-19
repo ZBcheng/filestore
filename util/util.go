@@ -10,7 +10,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/arstd/log"
 	"github.com/jinzhu/gorm"
+	"github.com/zbcheng/filestore/conf"
 	mysql "github.com/zbcheng/filestore/drivers/mysql"
 
 	"github.com/gin-gonic/gin"
@@ -94,4 +96,17 @@ func FileExists(path string) (exists bool, err error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func EncryptPwd(pwd string) (encPwd string, err error) {
+	md5Ctx := md5.New()
+	if _, err := md5Ctx.Write([]byte(pwd)); err != nil {
+		log.Error(err)
+		return "", err
+	}
+
+	pwdSecret := conf.Load().Secret.PwdSecret
+	encrypted := md5Ctx.Sum([]byte(pwdSecret))
+
+	return hex.EncodeToString(encrypted), nil
 }

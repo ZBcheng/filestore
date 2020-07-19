@@ -22,4 +22,6 @@ dbname = "filestore"
 password = "0000"
 
 [secret]
-secret_key = "Always blue!"
+token_secret = "Always blue!"
+pwd_secret = "#1$8/019*28@"
+

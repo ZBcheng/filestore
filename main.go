@@ -14,7 +14,8 @@ func main() {
 	// router.POST("/file/upload", handler.UploadHandler)
 	router.POST("/file/upload", handler.UploadHandler)
 
-	router.POST("/user/signin", handler.SigninHandler)
-	router.GET("/user/info", handler.UserInfoHandler)
+	router.POST("/user/signin", handler.Signin)
+	router.POST("/user/signup", handler.Signup)
+	router.GET("/user/info", handler.UserInfo)
 	router.Run(":7000")
 }

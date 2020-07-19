@@ -37,7 +37,8 @@ type pgConfig struct {
 }
 
 type secret struct {
-	SecretKey string `toml:"secret_key"`
+	TokenSecret string `toml:"token_secret"`
+	PwdSecret   string `toml:"pwd_secret"`
 }
 
 type dstPath struct {

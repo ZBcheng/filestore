@@ -18,33 +18,16 @@ func init() {
 }
 
 // UserSignup : 用户注册
-func UserSignup(username, password, email, phone string) bool {
-
-	if username == "" || password == "" {
-		return false
+func CreateUser(user *models.User) (err error) {
+	if affected := db.Create(&user); affected.Error != nil {
+		return affected.Error
 	}
-
-	signupAt := time.Now()
-	lastActiveAt := signupAt
-	user := models.User{
-		Username:   username,
-		Password:   password,
-		Email:      email,
-		Phone:      phone,
-		SignupAt:   signupAt,
-		LastActive: lastActiveAt,
-		Status:     0,
-		Token:      GenToken(username),
-	}
-
-	db.Create(&user)
-
-	return true
+	return nil
 }
 
 // GenToken : 生成token
 func GenToken(username string) string {
-	secretKey := conf.Load().Secret.SecretKey
+	secretKey := conf.Load().Secret.TokenSecret
 	// secretKey := "always blue"
 
 	claims := make(jwt.MapClaims)
@@ -60,7 +43,7 @@ func GenToken(username string) string {
 
 func AuthToken(username, token string) bool {
 	var tk *jwt.Token
-	var secretKey = conf.Load().Secret.SecretKey
+	var secretKey = conf.Load().Secret.TokenSecret
 	tk, err := jwt.Parse(token, func(*jwt.Token) (interface{}, error) {
 		return []byte(secretKey), nil
 	})
@@ -88,13 +71,18 @@ func AuthToken(username, token string) bool {
 
 func AuthUser(username, password, token string) (message string, success bool) {
 	user := &models.User{}
-	db.Where("name = ?", username).First(&user)
+	if affects := db.Where("username = ?", username).First(&user); affects.RowsAffected == 0 {
+		log.Debug("user '" + username + "' does not exist!")
+		return "user '" + username + "' does not exist!", false
+	}
 
 	if password != user.Password {
+		log.Debug("wrong username or password!")
 		return "wrong username or password!", false
 	}
 
 	if tokenValid := AuthToken(username, token); !tokenValid {
+		log.Debug("invalid token!")
 		return "invalid token!", false
 	}
 
