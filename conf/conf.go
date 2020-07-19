@@ -1,15 +1,16 @@
 package conf
 
 import (
-	"fmt"
-
 	"github.com/BurntSushi/toml"
+	"github.com/arstd/log"
 )
 
 type Config struct {
 	RdConf    redisConfig `toml:"redis"`
 	MysqlConf mysqlConfig `toml:"mysql"`
 	PgConf    pgConfig    `toml:"postgres"`
+	Secret    secret      `toml:"secret"`
+	DstPath   dstPath     `toml:"dst_path"`
 }
 
 type redisConfig struct {
@@ -35,15 +36,20 @@ type pgConfig struct {
 	Password string `toml:"password"`
 }
 
-var conf *Config
-
-func init() {
-	confPath := "/Users/zhangbicheng/PycharmProjects/filestore/conf/conf.toml"
-	if _, err := toml.DecodeFile(confPath, &conf); err != nil {
-		fmt.Println(err)
-	}
+type secret struct {
+	SecretKey string `toml:"secret_key"`
 }
 
-func GetConfig() *Config {
+type dstPath struct {
+	Path string `toml:"path"`
+}
+
+func Load() *Config {
+	var conf = &Config{}
+	confPath := "/Users/zhangbicheng/PycharmProjects/filestore/conf/conf.toml"
+	if _, err := toml.DecodeFile(confPath, &conf); err != nil {
+		log.Error(err)
+		return nil
+	}
 	return conf
 }

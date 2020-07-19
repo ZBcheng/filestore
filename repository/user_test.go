@@ -1,24 +1,27 @@
 package repository
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/zbcheng/filestore/models"
+)
+
+var user = &models.User{}
 
 func TestSingup(t *testing.T) {
-	_, err := UserSignup("Amy", "amy")
-	if err != nil {
-		t.Error(err)
+	suc := UserSignup("Amy2", "amy", "", "")
+	if !suc {
+		t.Error("Error")
 	}
 }
 
-func TestSignin(t *testing.T) {
-	_, err := UserSignin("Amy", "amy or WHERE 1=1")
-	if err != nil {
-		t.Error(err)
-	}
+func TestGenToken(t *testing.T) {
+	token := GenToken("bee")
+	t.Log(len(token))
+	t.Log(token)
 }
 
-func TestUpdateToken(t *testing.T) {
-	_, err := UpdateToken("Amy", "0101010")
-	if err != nil {
-		t.Error(err)
-	}
+func TestAuthToken(t *testing.T) {
+	token := GenToken("bee")
+	AuthToken("bee", token)
 }

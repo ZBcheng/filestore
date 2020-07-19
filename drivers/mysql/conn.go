@@ -1,32 +1,34 @@
 package drivers
 
 import (
-	"database/sql"
-	"fmt"
 	"os"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/arstd/log"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/mysql"
 	"github.com/zbcheng/filestore/conf"
 )
 
-var db *sql.DB
+var db *gorm.DB
 
 func init() {
 	var err error
 
-	config := conf.GetConfig()
+	config := conf.Load()
 	username := config.MysqlConf.User
 	password := config.MysqlConf.Password
+	host := config.MysqlConf.Host
+	port := config.MysqlConf.Port
 	dbName := config.MysqlConf.DBName
 
-	mysqlInfo := fmt.Sprintf("%s:%s@/%s", username, password, dbName)
-	db, err = sql.Open("mysql", mysqlInfo)
+	connInfo := username + ":" + password + "@tcp(" + host + ":" + port + ")/" + dbName + "?charset=utf8" + "&parseTime=true"
+	db, err = gorm.Open("mysql", connInfo)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		os.Exit(1)
 	}
 }
 
-func DBConn() *sql.DB {
+func DBConn() *gorm.DB {
 	return db
 }

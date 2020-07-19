@@ -8,7 +8,7 @@ import (
 	"github.com/zbcheng/filestore/conf"
 )
 
-var config = conf.GetConfig()
+var config = conf.Load()
 
 var (
 	pool      *redis.Pool

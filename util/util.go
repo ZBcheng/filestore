@@ -3,7 +3,6 @@ package util
 import (
 	"crypto/md5"
 	"crypto/sha1"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -11,12 +10,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jinzhu/gorm"
 	mysql "github.com/zbcheng/filestore/drivers/mysql"
 
 	"github.com/gin-gonic/gin"
 )
 
-var db *sql.DB
+var db *gorm.DB
 
 func init() {
 	db = mysql.DBConn()
@@ -83,4 +83,15 @@ func Sha1(data []byte) string {
 	_sha1 := sha1.New()
 	_sha1.Write(data)
 	return hex.EncodeToString(_sha1.Sum(nil))
+}
+
+func FileExists(path string) (exists bool, err error) {
+	_, err = os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }

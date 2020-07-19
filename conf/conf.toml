@@ -1,5 +1,5 @@
-[crawler]
-host = "120.55.41.64"
+[dst_path]
+path = "/usr/local/Projects/"
 
 [redis]
 host = "localhost"
@@ -20,3 +20,6 @@ port = "5432"
 username = "postgres"
 dbname = "filestore"
 password = "0000"
+
+[secret]
+secret_key = "Always blue!"

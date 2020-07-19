@@ -13,5 +13,8 @@ func main() {
 	router.Use(util.Cors())
 	// router.POST("/file/upload", handler.UploadHandler)
 	router.POST("/file/upload", handler.UploadHandler)
+
+	router.POST("/user/signin", handler.SigninHandler)
+	router.GET("/user/info", handler.UserInfoHandler)
 	router.Run(":7000")
 }

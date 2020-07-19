@@ -1,34 +1,22 @@
 package repository
 
 import (
-	"fmt"
+	"time"
+
+	drivers "github.com/zbcheng/filestore/drivers/mysql"
+	"github.com/zbcheng/filestore/models"
 )
 
-func OnFileUploadFinished(filehash string, filename string,
-	filesize int64, fileaddr string) bool {
-	stmt, err := db.Prepare("INSERT IGNORE INTO tbl_file (`file_sha1`, `file_name`, `file_size`," +
-		"`file_addr`, `status`) values(?,?,?,?,1)")
-	if err != nil {
-		fmt.Println(err)
-		return false
-	}
-	defer stmt.Close()
-
-	ret, err := stmt.Exec(filehash, filename, filesize, fileaddr)
-	if err != nil {
-		fmt.Println(err)
-		return false
+func StoreFileMeta(fMeta models.FileMeta) {
+	db := drivers.DBConn()
+	file := models.FileMeta{
+		FileHash: fMeta.FileHash,
+		FileName: fMeta.FileName,
+		FileSize: fMeta.FileSize,
+		Location: fMeta.Location,
+		UploadAt: string(time.Now().Format("2006-01-02 15:04:05")),
 	}
 
-	rowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		fmt.Println(err)
-		return false
-	}
+	db.Create(&file)
 
-	if rowsAffected <= 0 {
-		fmt.Printf("File with hash:%s has been uploaded before\n", filehash)
-	}
-
-	return true
 }

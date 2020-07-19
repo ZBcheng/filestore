@@ -2,7 +2,6 @@ package handler
 
 import (
 	"bufio"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -16,10 +15,11 @@ import (
 	"sync"
 	"time"
 
-	mysql "github.com/zbcheng/filestore/drivers/mysql"
+	"github.com/arstd/log"
+	"github.com/zbcheng/filestore/conf"
 	rPool "github.com/zbcheng/filestore/drivers/redis"
-	"github.com/zbcheng/filestore/meta"
 	"github.com/zbcheng/filestore/models"
+	repo "github.com/zbcheng/filestore/repository"
 	"github.com/zbcheng/filestore/util"
 
 	"github.com/garyburd/redigo/redis"
@@ -34,23 +34,19 @@ type UploadInfo struct {
 	ChunkCount int
 }
 
-var sqlConn *sql.DB
-
-func init() {
-	sqlConn = mysql.DBConn()
-}
-
 // UploadHandler : 文件上传
 func UploadHandler(c *gin.Context) {
 	var wg sync.WaitGroup
 
-	fpath := "/Users/zhangbicheng/Desktop/"
+	dstPath := conf.Load().DstPath.Path
 	file, fHead, err := c.Request.FormFile("file")
 
 	if err != nil {
 		fmt.Println("Failed to form file, err: ", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Failed to form file",
+			"msg":  "Failed to form file",
+			"err":  1,
+			"data": "",
 		})
 		return
 	}
@@ -61,7 +57,7 @@ func UploadHandler(c *gin.Context) {
 		fileMeta: models.FileMeta{
 			FileName: fHead.Filename,
 			FileHash: util.Sha1([]byte(fHead.Filename)),
-			Location: fpath,
+			Location: dstPath,
 			FileSize: fHead.Size,
 			UploadAt: time.Now().Format("2006-01-02 15:04:05"),
 		},
@@ -74,23 +70,40 @@ func UploadHandler(c *gin.Context) {
 		uploadInfo.ChunkCount = int(math.Ceil(float64(uploadInfo.fileMeta.FileSize) / float64(uploadInfo.ChunkSize)))
 	}
 
-	exists, err := meta.FileExists(uploadInfo.fileMeta)
+	exists, err := util.FileExists(uploadInfo.fileMeta.Location + uploadInfo.UploadID + "/" + uploadInfo.fileMeta.FileName)
 	if err != nil {
-		fmt.Println("Failed to check file")
-	}
-
-	if exists {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "File already exists, upload done!",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg":  "Failed to check file path!",
+			"err":  1,
+			"data": "",
 		})
 		return
 	}
 
-	initialUpload(&uploadInfo)
+	if exists {
+		c.JSON(http.StatusOK, gin.H{
+			"msg":  "File already exists, upload done!",
+			"err":  0,
+			"data": uploadInfo.fileMeta.FileHash,
+		})
+		return
+	}
+
+	if uploadSuc := initialUpload(&uploadInfo); !uploadSuc {
+		log.Error("Failed to init upload")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg":  "Failed to init upload",
+			"err":  1,
+			"data": "",
+		})
+		return
+	}
 
 	bfReader := bufio.NewReader(file)
 
 	buf := make([]byte, uploadInfo.ChunkSize)
+
+	var uploadPartSuc = true
 
 	for i := 0; i < uploadInfo.ChunkCount; i++ {
 		n, err := bfReader.Read(buf)
@@ -99,14 +112,18 @@ func UploadHandler(c *gin.Context) {
 				break
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{
-					"message": "Failed to divide file",
+					"msg":  "Failed to divide file",
+					"err":  1,
+					"data": "",
 				})
 				return
 			}
 		}
 		if n <= 0 {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"message": "Failed to divide file",
+				"msg":  "Failed to divide file",
+				"err":  1,
+				"data": "",
 			})
 			return
 		}
@@ -118,28 +135,44 @@ func UploadHandler(c *gin.Context) {
 		go func(b []byte, curIdx int) {
 			defer wg.Done()
 			if err = uploadPart(b, curIdx, &uploadInfo); err != nil {
+				log.Error("Failed to upload part: ", curIdx, err)
+				uploadPartSuc = false
 				return
 			}
 		}(bufCopied[:n], i)
+
 	}
 
 	wg.Wait()
 
-	if err = completeUpload(&uploadInfo); err != nil {
-		fmt.Println("Failed to complete upload, err: ", err.Error())
+	if !uploadPartSuc {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Failed to compete upload",
+			"msg":  "Failed to upload part",
+			"err":  1,
+			"data": "",
+		})
+		return
+	}
+
+	if err = completeUpload(&uploadInfo); err != nil {
+		log.Error("Failed to complete upload, err: ", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg":  "Failed to compete upload",
+			"err":  1,
+			"data": "",
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Upload file complete",
+		"msg":  "Upload file complete",
+		"err":  1,
+		"data": uploadInfo.fileMeta.FileHash,
 	})
 }
 
 // initialUpload : 初始化分块上传
-func initialUpload(up *UploadInfo) {
+func initialUpload(up *UploadInfo) bool {
 
 	var err error
 	rConn := rPool.RedisPool().Get()
@@ -148,17 +181,21 @@ func initialUpload(up *UploadInfo) {
 	uploadID := "bee" + fmt.Sprintf("%x", time.Now().UnixNano())
 
 	if _, err = rConn.Do("HSET", "MP_"+uploadID, "chunkcount", up.ChunkCount); err != nil {
-		return
+		log.Error("Failed to hset chunkcount:", up.ChunkCount)
+		return false
 	}
 	if _, err = rConn.Do("HSET", "MP_"+uploadID, "filehash", up.fileMeta.FileHash); err != nil {
-		return
+		log.Error("Failed to hset filehash:", up.fileMeta.FileHash)
+		return false
 	}
 	if _, err = rConn.Do("HSET", "MP_"+uploadID, "filesize", up.fileMeta.FileSize); err != nil {
-		return
+		log.Error("Failed to hset filesize:", up.fileMeta.FileSize)
+		return false
 	}
 
 	up.UploadID = uploadID
 
+	return true
 }
 
 // uploadPart : 上传块文件
@@ -187,7 +224,7 @@ func uploadPart(buf []byte, chunkIndex int, up *UploadInfo) (err error) {
 		return err
 	}
 
-	fmt.Println("chkidx_" + index + " upload success")
+	log.Debug("chkidx_" + index + " upload success")
 	return nil
 }
 
@@ -243,30 +280,12 @@ func completeUpload(up *UploadInfo) (err error) {
 		}
 	}
 
-	fmt.Println("Write file complete!")
 	if _, err = rConn.Do("DEL", "MP_"+up.UploadID); err != nil {
 		fmt.Println("Failed to DEL:", err)
 		return err
 	}
 
-	stmt, err := sqlConn.Prepare("INSERT INTO tbl_file (`file_sha1`, `file_name`, `file_size`," +
-		"`file_addr`, `update_at`) values(?, ?, ?, ?, ?)")
-	if err != nil {
-		fmt.Println("Failed to prepare sql", err)
-		return err
-	}
-
-	defer stmt.Close()
-
-	if _, err = stmt.Exec(up.fileMeta.FileHash, up.fileMeta.FileName,
-		up.fileMeta.FileSize, up.fileMeta.Location, up.fileMeta.UploadAt); err != nil {
-		fmt.Println("Failed to exec sql:", err)
-		return err
-	}
-
-	if suc := meta.UpdateFileMetaDB(up.fileMeta); !suc {
-		fmt.Println("Update DB failed")
-	}
+	repo.StoreFileMeta(up.fileMeta)
 
 	return nil
 }

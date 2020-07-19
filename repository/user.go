@@ -1,122 +1,102 @@
 package repository
 
 import (
-	"database/sql"
-	"errors"
 	"time"
 
+	"github.com/arstd/log"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/jinzhu/gorm"
+	"github.com/zbcheng/filestore/conf"
 	drivers "github.com/zbcheng/filestore/drivers/mysql"
+	"github.com/zbcheng/filestore/models"
 )
 
-var db *sql.DB
+var db *gorm.DB
 
 func init() {
 	db = drivers.DBConn()
 }
 
-type User struct {
-	Username     string
-	Email        string
-	Phone        string
-	SignupAt     string
-	LastActiveAt string
-	Status       int
+// UserSignup : 用户注册
+func UserSignup(username, password, email, phone string) bool {
+
+	if username == "" || password == "" {
+		return false
+	}
+
+	signupAt := time.Now()
+	lastActiveAt := signupAt
+	user := models.User{
+		Username:   username,
+		Password:   password,
+		Email:      email,
+		Phone:      phone,
+		SignupAt:   signupAt,
+		LastActive: lastActiveAt,
+		Status:     0,
+		Token:      GenToken(username),
+	}
+
+	db.Create(&user)
+
+	return true
 }
 
-// UserSingup : 用户注册
-func UserSignup(username, password string) (success bool, err error) {
-	stmt, err := db.Prepare("INSERT IGNORE INTO tbl_user (`user_name`, `user_pwd`) values(?, ?)")
-	if err != nil {
-		return false, err
-	}
+// GenToken : 生成token
+func GenToken(username string) string {
+	secretKey := conf.Load().Secret.SecretKey
+	// secretKey := "always blue"
 
-	defer stmt.Close()
+	claims := make(jwt.MapClaims)
+	claims["username"] = username
 
-	ret, err := stmt.Exec(username, password)
-	if err != nil {
-		return false, err
-	}
+	claims["exp"] = time.Now().Add(time.Hour * 24).Unix()
 
-	if rowsAffected, err := ret.RowsAffected(); err == nil && rowsAffected > 0 {
-		return true, nil
-	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, _ := token.SignedString([]byte(secretKey))
 
-	return false, errors.New("Unknown Error")
-
+	return tokenString
 }
 
-func UserSignin(username, password string) (success bool, err error) {
-	var pwd string
-
-	stmt, err := db.Prepare("SELECT user_pwd FROM tbl_user WHERE `user_name`=? limit 1")
+func AuthToken(username, token string) bool {
+	var tk *jwt.Token
+	var secretKey = conf.Load().Secret.SecretKey
+	tk, err := jwt.Parse(token, func(*jwt.Token) (interface{}, error) {
+		return []byte(secretKey), nil
+	})
 	if err != nil {
-		return false, err
+		log.Error("Failed to auth token: ", err)
+		return false
 	}
 
-	defer stmt.Close()
+	claims := tk.Claims.(jwt.MapClaims)
 
-	rows, err := stmt.Query(username)
-	if err != nil {
-		return false, nil
-	} else if rows == nil {
-		return false, errors.New("username not found")
+	if username != claims["username"] {
+		log.Debug("Username doesn't mastch!")
+		return false
 	}
 
-	for rows.Next() {
-		if err = rows.Scan(&pwd); err != nil {
-			return false, err
-		}
+	curTime := time.Now().Unix()
+
+	if curTime > int64(claims["exp"].(float64)) {
+		log.Debug("Token expired!")
+		return false
 	}
 
-	if password == pwd {
-		if err = updateLastActive(username); err != nil {
-			return false, err
-		}
-		return true, nil
-	} else {
-		return false, errors.New("wrong password")
-	}
-
+	return true
 }
 
-func UpdateToken(username, token string) (success bool, err error) {
-	stmt, err := db.Prepare("REPLACE INTO tbl_user_token (`username`, `user_token`) values(?,?)")
-	if err != nil {
-		return false, err
-	}
-	defer stmt.Close()
+func AuthUser(username, password, token string) (message string, success bool) {
+	user := &models.User{}
+	db.Where("name = ?", username).First(&user)
 
-	ret, err := stmt.Exec(username, token)
-	if err != nil {
-		return false, err
+	if password != user.Password {
+		return "wrong username or password!", false
 	}
 
-	rowsAffected, err := ret.RowsAffected()
-	if err == nil && rowsAffected > 0 {
-		return true, nil
-	}
-	return false, err
-}
-
-// UpdateLastActive : 更新登录时间
-func updateLastActive(username string) (err error) {
-	lastActiveAt := time.Now().Format("2006-01-02 15:04:05")
-	stmt, err := db.Prepare("UPDATE tbl_user SET last_active=? WHERE user_name=?")
-	if err != nil {
-		return err
+	if tokenValid := AuthToken(username, token); !tokenValid {
+		return "invalid token!", false
 	}
 
-	defer stmt.Close()
-
-	ret, err := stmt.Exec(lastActiveAt, username)
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected, err := ret.RowsAffected(); err == nil && rowsAffected > 0 {
-		return nil
-	}
-
-	return errors.New("Falied to update last_active")
-
+	return "ok", true
 }
