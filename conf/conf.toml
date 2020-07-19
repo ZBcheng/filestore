@@ -1,5 +1,5 @@
 [dst_path]
-path = "/usr/local/Projects/"
+path = "/Users/zhangbicheng/Desktop/"
 
 [redis]
 host = "localhost"

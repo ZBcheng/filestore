@@ -70,7 +70,8 @@ func UploadHandler(c *gin.Context) {
 		uploadInfo.ChunkCount = int(math.Ceil(float64(uploadInfo.fileMeta.FileSize) / float64(uploadInfo.ChunkSize)))
 	}
 
-	exists, err := util.FileExists(uploadInfo.fileMeta.Location + uploadInfo.UploadID + "/" + uploadInfo.fileMeta.FileName)
+	exists, err := util.FileExists(uploadInfo.fileMeta.Location + "bee" + uploadInfo.fileMeta.FileHash)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg":  "Failed to check file path!",
@@ -205,7 +206,7 @@ func uploadPart(buf []byte, chunkIndex int, up *UploadInfo) (err error) {
 	index := strconv.Itoa(chunkIndex)
 	defer rConn.Close()
 
-	fpath := up.fileMeta.Location + up.UploadID + "/" + index
+	fpath := up.fileMeta.Location + "bee" + up.fileMeta.FileHash + "/" + index
 
 	if err = os.MkdirAll(path.Dir(fpath), 0744); err != nil {
 		return err
@@ -256,7 +257,7 @@ func completeUpload(up *UploadInfo) (err error) {
 		return errors.New("invalid request")
 	}
 
-	fd, err := os.Create(up.fileMeta.Location + up.UploadID + "/" + up.fileMeta.FileName)
+	fd, err := os.Create(up.fileMeta.Location + "bee" + up.fileMeta.FileHash + "/" + up.fileMeta.FileName)
 
 	if err != nil {
 		return err
@@ -265,7 +266,7 @@ func completeUpload(up *UploadInfo) (err error) {
 	defer fd.Close()
 
 	for i := 0; i < chunkCount; i++ {
-		fpath := up.fileMeta.Location + up.UploadID + "/" + strconv.Itoa(i)
+		fpath := up.fileMeta.Location + "bee" + up.fileMeta.FileHash + "/" + strconv.Itoa(i)
 		b, err := ioutil.ReadFile(fpath)
 		if err != nil {
 			return err
