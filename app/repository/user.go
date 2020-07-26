@@ -5,21 +5,14 @@ import (
 
 	"github.com/arstd/log"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/jinzhu/gorm"
+	db "github.com/zbcheng/filestore/app/drivers/mysql"
+	"github.com/zbcheng/filestore/app/models"
 	"github.com/zbcheng/filestore/conf"
-	drivers "github.com/zbcheng/filestore/drivers/mysql"
-	"github.com/zbcheng/filestore/models"
 )
-
-var db *gorm.DB
-
-func init() {
-	db = drivers.DBConn()
-}
 
 // UserSignup : 用户注册
 func CreateUser(user *models.User) (err error) {
-	if affected := db.Create(&user); affected.Error != nil {
+	if affected := db.DBConn().Create(&user); affected.Error != nil {
 		return affected.Error
 	}
 	return nil
@@ -69,22 +62,28 @@ func AuthToken(username, token string) bool {
 	return true
 }
 
-func AuthUser(username, password, token string) (message string, success bool) {
+func AuthUser(username, password, token string) (id int, err error) {
 	user := &models.User{}
-	if affects := db.Where("username = ?", username).First(&user); affects.RowsAffected == 0 {
+	affects := db.DBConn().Where("username = ?", username).First(&user)
+
+	if affects.Error != nil {
+		return 0, affects.Error
+	}
+
+	if affects.RowsAffected == 0 {
 		log.Debug("user '" + username + "' does not exist!")
-		return "user '" + username + "' does not exist!", false
+		return 0, nil
 	}
 
 	if password != user.Password {
 		log.Debug("wrong username or password!")
-		return "wrong username or password!", false
+		return 0, nil
 	}
 
 	if tokenValid := AuthToken(username, token); !tokenValid {
 		log.Debug("invalid token!")
-		return "invalid token!", false
+		return 0, nil
 	}
 
-	return "ok", true
+	return user.ID, nil
 }

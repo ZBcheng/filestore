@@ -1,76 +1,51 @@
-package handler
+package users
 
 import (
 	"net/http"
 
 	"github.com/arstd/log"
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
-	drivers "github.com/zbcheng/filestore/drivers/mysql"
-	"github.com/zbcheng/filestore/models"
-	repo "github.com/zbcheng/filestore/repository"
+	"github.com/zbcheng/filestore/app/models"
+	"github.com/zbcheng/filestore/conf"
 	"github.com/zbcheng/filestore/util"
 )
 
-var db *gorm.DB
-
-func init() {
-	db = drivers.DBConn()
-}
-
-type LoginForm struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-type SignupForm struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Phone    string `json:"phone"`
-	Email    string `json:"email"`
-	Avatar   string `json:"avatar"`
-}
-
 // Signin : 用户登录
-func Signin(c *gin.Context) {
-	loginForm := LoginForm{}
-	if err := c.BindJSON(&loginForm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg":  "Internal Server Error",
-			"err":  1,
-			"data": "",
-		})
-		return
-	}
+func Signin(req *UserSigninReq) (res *Resp, err error) {
+	res = new(Resp)
 
-	username := loginForm.Username
-	password, err := util.EncryptPwd(loginForm.Password)
+	username := req.Username
+	password, err := util.EncryptPwd(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg":  "Internal Server Error",
-			"err":  1,
-			"data": "",
-		})
-		log.Info("Failed to auth password")
+		res.Code = 500
+		res.Msg = "Encrypt password error"
 		return
 	}
 
-	msg, suc := repo.AuthUser(username, password, repo.GenToken(username))
+	token := repo.GenToken(username)
+	id, err := repo.AuthUser(username, password, token)
 
-	if !suc {
-		c.JSON(http.StatusForbidden, gin.H{
-			"msg":  msg,
-			"err":  1,
-			"data": "",
-		})
+	if err != nil {
+		res.Code = 400
+		res.Msg = "Wrong username or password"
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"msg":  "",
-		"err":  0,
-		"data": "OK",
-	})
+	if id == 0 {
+		res.Code = 400
+		res.Msg = "Auth failed"
+		log.Debug(username, password, req.Password)
+		return
+	}
+
+	res.Code = conf.SucRespCode
+	res.Msg = conf.SucRespMsg
+	res.Data = &UserSigninResp{
+		ID:    id,
+		Token: token,
+	}
+
+	return res, nil
 
 }
 

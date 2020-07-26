@@ -1,6 +1,8 @@
 package conf
 
 import (
+	"os"
+
 	"github.com/BurntSushi/toml"
 	"github.com/arstd/log"
 )
@@ -47,7 +49,12 @@ type dstPath struct {
 
 func Load() *Config {
 	var conf = &Config{}
-	confPath := "/Users/zhangbicheng/PycharmProjects/filestore/conf/conf.toml"
+	pwd, err := os.Getwd()
+	if err != nil {
+		log.Error("Failed to get pwd")
+		return nil
+	}
+	confPath := pwd + "/conf/conf.toml"
 	if _, err := toml.DecodeFile(confPath, &conf); err != nil {
 		log.Error(err)
 		return nil

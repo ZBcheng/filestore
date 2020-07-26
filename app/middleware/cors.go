@@ -1,17 +1,9 @@
-package util
+package middleware
 
 import (
-	"crypto/md5"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"strings"
-
-	"github.com/arstd/log"
-	"github.com/zbcheng/filestore/conf"
 
 	"github.com/gin-gonic/gin"
 )
@@ -51,54 +43,4 @@ func Cors() gin.HandlerFunc {
 		// 处理请求
 		c.Next() //  处理请求
 	}
-}
-
-// FileMD5 : 生成file md5
-func FileMD5(file *os.File) string {
-	_md5 := md5.New()
-	io.Copy(_md5, file)
-	return hex.EncodeToString(_md5.Sum(nil))
-}
-
-// MD5 : 创建文件唯一标记
-func MD5(data []byte) string {
-	_md5 := md5.New()
-	_md5.Write(data)
-	return hex.EncodeToString(_md5.Sum([]byte("")))
-}
-
-func FileSha1(file *os.File) string {
-	_sha1 := sha1.New()
-	io.Copy(_sha1, file)
-	return hex.EncodeToString(_sha1.Sum(nil))
-}
-
-func Sha1(data []byte) string {
-	_sha1 := sha1.New()
-	_sha1.Write(data)
-	return hex.EncodeToString(_sha1.Sum(nil))
-}
-
-func FileExists(path string) (exists bool, err error) {
-	_, err = os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
-func EncryptPwd(pwd string) (encPwd string, err error) {
-	md5Ctx := md5.New()
-	if _, err := md5Ctx.Write([]byte(pwd)); err != nil {
-		log.Error(err)
-		return "", err
-	}
-
-	pwdSecret := conf.Load().Secret.PwdSecret
-	encrypted := md5Ctx.Sum([]byte(pwdSecret))
-
-	return hex.EncodeToString(encrypted), nil
 }

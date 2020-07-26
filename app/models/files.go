@@ -2,7 +2,7 @@ package models
 
 import (
 	"github.com/jinzhu/gorm"
-	drivers "github.com/zbcheng/filestore/drivers/mysql"
+	drivers "github.com/zbcheng/filestore/app/drivers/mysql"
 )
 
 func init() {
